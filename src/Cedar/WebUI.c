@@ -117,6 +117,8 @@ static void WuFreeStrStrMap(LIST *params);
 static void WuEnableTag(wchar_t **buf, wchar_t *keyword);
 static char *WuNewSessionKey();
 static void WuUniStrReplace(wchar_t **buf, wchar_t *from, char *to);
+static char *WuEncodeHtml(char *src);
+static void WuUniStrReplaceHtml(wchar_t **buf, wchar_t *from, char *to);
 static wchar_t *WuUniGetTemplate(wchar_t **str, wchar_t *start, wchar_t *end, bool erase);
 static void WuUniUintReplace(wchar_t **buf, wchar_t *key, UINT num);
 static void WuUniUint64Replace(wchar_t **buf, wchar_t *key, UINT64 num);
@@ -1334,14 +1336,14 @@ static wchar_t *WpSession(WEBUI *wu, LIST *params)
 				RPC_ENUM_SESSION_ITEM *item = &(t.Sessions[i]);
 				wchar_t *tmp = CopyUniStr(tmpl);
 
-				WuUniStrReplace(&tmp, L"{SESSION_NAME}", item->Name);
-				WuUniStrReplace(&tmp, L"{SESSION_SERVER}", item->RemoteHostname);
-				WuUniStrReplace(&tmp, L"{SESSION_USER}", item->Username);
-				WuUniStrReplace(&tmp, L"{SESSION_HOST}", item->Hostname);
+				WuUniStrReplaceHtml(&tmp, L"{SESSION_NAME}", item->Name);
+				WuUniStrReplaceHtml(&tmp, L"{SESSION_SERVER}", item->RemoteHostname);
+				WuUniStrReplaceHtml(&tmp, L"{SESSION_USER}", item->Username);
+				WuUniStrReplaceHtml(&tmp, L"{SESSION_HOST}", item->Hostname);
 				WuUniUintReplace(&tmp, L"{SESSION_TCP}", item->CurrentNumTcp);
 				WuUniUint64Replace(&tmp, L"{SESSION_BYTES}", item->PacketSize);
 				WuUniUint64Replace(&tmp, L"{SESSION_PKTS}", item->PacketNum);
-				WuUniStrReplace(&tmp, L"{SESSION}", item->Name);
+				WuUniStrReplaceHtml(&tmp, L"{SESSION}", item->Name);
 
 				WuUniInsertBefore(&buf, tmp, L"<!--SESSIONS-->");
 				Free(tmp);
@@ -1794,6 +1796,80 @@ static void WuUniStrReplace(wchar_t **buf, wchar_t *from, char *to)
 	StrToUni(tmp, unisize, to);
 	WuUniReplace(buf, from, tmp);
 	Free(tmp);
+}
+
+// HTML-encode an ASCII string so that client-supplied values cannot inject markup
+// into a WebUI page that is served as text/html
+static char *WuEncodeHtml(char *src)
+{
+	UINT i, len, j, size;
+	char *ret;
+
+	if (src == NULL)
+	{
+		return CopyStr("");
+	}
+
+	len = StrLen(src);
+	// Worst case every character expands to a 6 byte entity ("&quot;")
+	size = len * 6 + 1;
+	ret = Malloc(size);
+
+	j = 0;
+	for (i = 0; i < len; i++)
+	{
+		char *ent = NULL;
+
+		switch (src[i])
+		{
+		case '&':
+			ent = "&amp;";
+			break;
+		case '<':
+			ent = "&lt;";
+			break;
+		case '>':
+			ent = "&gt;";
+			break;
+		case '\"':
+			ent = "&quot;";
+			break;
+		case '\'':
+			ent = "&#39;";
+			break;
+		}
+
+		if (ent != NULL)
+		{
+			UINT k, elen = StrLen(ent);
+			for (k = 0; k < elen; k++)
+			{
+				ret[j++] = ent[k];
+			}
+		}
+		else
+		{
+			ret[j++] = src[i];
+		}
+	}
+	ret[j] = 0;
+
+	return ret;
+}
+
+// Replace the Unicode pattern in Unicode string with the HTML-encoded form of an ASCII string
+static void WuUniStrReplaceHtml(wchar_t **buf, wchar_t *from, char *to)
+{
+	char *encoded;
+
+	if (buf == NULL || *buf == NULL || from == NULL || to == NULL)
+	{
+		return;
+	}
+
+	encoded = WuEncodeHtml(to);
+	WuUniStrReplace(buf, from, encoded);
+	Free(encoded);
 }
 
 // Extract the template surrounded by specified Unicode string from Unicode string
