@@ -44,9 +44,10 @@ fi
 # version and date info from $cbuild are put into array ${cbuildarray[@]}
 # build "${cbuildarray[0]}", major version "${cbuildarray[1]}",
 # release type "${cbuildarray[2]}", and  date "${cbuildarray[3]}"
+i=0
 while IFS=$'\r\n' read -r line_data; do
         cbuildarray[i]="${line_data##*[A-Z]\ }"
-	((++i))
+        ((++i))
 done < "$cbuild"
 
 # "${cbuildarray[1]}" is converted from "406" to "4.06" using GNU awk
