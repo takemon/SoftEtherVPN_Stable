@@ -404,11 +404,20 @@ bool SendPeapRawPacket(EAP_CLIENT *e, UCHAR *peap_data, UINT peap_size)
 				{
 					if (peap_msg->TlsFlags & EAP_TLS_FLAGS_LEN)
 					{
-						UINT total_size = READ_UINT(((UCHAR *)peap_msg) + sizeof(EAP_PEAP));
-
-						if (total_size <= (response_packet->Parse_EapMessage_DataSize - sizeof(EAP_PEAP) - sizeof(UINT)))
+						// Ensure the message is large enough to contain the
+						// EAP_PEAP header plus the 4-byte TLS length field before
+						// reading it, otherwise the available-size computation
+						// below would underflow.
+						if (response_packet->Parse_EapMessage_DataSize >= (sizeof(EAP_PEAP) + sizeof(UINT)))
 						{
-							WriteFifo(e->SslPipe->RawIn->SendFifo, ((UCHAR *)peap_msg) + sizeof(EAP_PEAP) + sizeof(UINT), total_size);
+							UINT total_size = READ_UINT(((UCHAR *)peap_msg) + sizeof(EAP_PEAP));
+
+							// Use addition rather than an underflow-prone subtraction
+							// when bounding the attacker-controlled total_size.
+							if (((UINT64)total_size + sizeof(EAP_PEAP) + sizeof(UINT)) <= (UINT64)response_packet->Parse_EapMessage_DataSize)
+							{
+								WriteFifo(e->SslPipe->RawIn->SendFifo, ((UCHAR *)peap_msg) + sizeof(EAP_PEAP) + sizeof(UINT), total_size);
+							}
 						}
 					}
 					else
