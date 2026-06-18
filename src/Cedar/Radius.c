@@ -2130,21 +2130,21 @@ RECV_RETRY:
 						LIST *o;
 						BUF *buf = NewBufFromMemory(recv_buf, recv_size);
 
-						if (RadiusRequireMessageAuthenticator == false)
+						// Always validate the RADIUS Response Authenticator against the
+						// shared secret (RFC 2865). The Response Authenticator is the only
+						// field protected by the shared secret, so it must be verified for
+						// every Access-Accept regardless of the Message-Authenticator
+						// option; otherwise an on-path or spoofing attacker could forge an
+						// Access-Accept and bypass authentication.
+						if ( recv_size < 20 )
 						{
-							ret = true;
+							ret = false;
 						}
 						else
 						{
-							// Validate Response Authenticator header and Message-Authenticator
-							if ( recv_size < 20 )
-							{
-								ret = false;
-							}
-							else
-							{
-								ret = RadiusValidateAuthenticator(buf, (char *)secret, (char *)random, RadiusRequireMessageAuthenticator);
-							}
+							// When RadiusRequireMessageAuthenticator is true the
+							// Message-Authenticator attribute is additionally required.
+							ret = RadiusValidateAuthenticator(buf, (char *)secret, (char *)random, RadiusRequireMessageAuthenticator);
 						}
 
 						if (is_mschap && mschap_v2_server_response_20 != NULL)
@@ -2361,6 +2361,14 @@ bool RadiusValidateAuthenticator(BUF *b, char *secret, char *request_authenticat
 					UCHAR zero16[16];
 					UCHAR msg_auth0[16];
 					UCHAR msg_auth1[16];
+
+					// The Message-Authenticator value is exactly 16 bytes (RFC 3579).
+					// Reject any other length to avoid overflowing the 16-byte buffer.
+					if (size != sizeof(msg_auth0))
+					{
+						ret = false;
+						break;
+					}
 
 					Copy(msg_auth0, data, size);
 
