@@ -3302,6 +3302,12 @@ bool RUDPProcessBulkRecvPacket(RUDP_STACK *r, RUDP_SESSION *se, void *recv_data,
 	}
 
 	// SEQ NO
+	if (size < sizeof(UINT64))
+	{
+		// Not enough decrypted data remains to contain the sequence number
+		WHERE;
+		return false;
+	}
 	seq_no = READ_UINT64(p);
 	p += sizeof(UINT64);
 	size -= sizeof(UINT64);
